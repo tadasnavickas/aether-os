@@ -14,6 +14,7 @@
 #include "fs/vfs.h"
 #include "shell.h"
 #include "fs/aetherfs.h"
+#include "gui/gfx.h"
 
 __attribute__((used, section(".requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
@@ -231,6 +232,9 @@ void kmain(void) {
     // Shell
     fg_color = 0xFFFFFFFF;
     shell_init();
+
+    // GUI
+    gfx_init(fb);
 
     for (;;) {
         __asm__ volatile ("hlt");

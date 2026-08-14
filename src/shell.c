@@ -5,6 +5,7 @@
 #include "drivers/rtc.h"
 #include "fs/vfs.h"
 #include "fs/aetherfs.h"
+#include "gui/desktop.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -50,7 +51,7 @@ static size_t strlen(const char *s) {
 void shell_init(void) {
     cmd_len = 0;
     cmd_buffer[0] = '\0';
-    kprint("\nAetherOS Shell v0.2 (Native AetherFS ready)\nType 'help' for commands.\n> ");
+    kprint("\nAetherOS Shell v0.4\nType 'help' for commands.\n> ");
 }
 
 static void shell_execute(void) {
@@ -63,9 +64,10 @@ static void shell_execute(void) {
 
     if (strcmp(cmd_buffer, "help") == 0) {
         kprint("Commands:\n");
+        kprint("  gui          - Launch Graphical Desktop UI\n");
         kprint("  dir          - List files on AetherFS disk\n");
         kprint("  touch <file> - Create an empty file\n");
-        kprint("  write <f> <t>- Write/Overwrite text into file\n");
+        kprint("  write <f> <t>- Write text into file\n");
         kprint("  type <file>  - Read file contents\n");
         kprint("  rm <file>    - Delete file from AetherFS\n");
         kprint("  format       - Reformat AetherFS disk\n");
@@ -76,6 +78,11 @@ static void shell_execute(void) {
         kprint("  sleep        - Sleep 2 seconds\n");
         kprint("  mem / heap   - Memory status\n");
         kprint("  clear        - Clear screen\n");
+    } else if (strcmp(cmd_buffer, "gui") == 0) {
+        desktop_render();
+        cmd_len = 0;
+        cmd_buffer[0] = '\0';
+        return;
     } else if (strcmp(cmd_buffer, "clear") == 0) {
         clear_screen(0x000F172A);
     } else if (strcmp(cmd_buffer, "dir") == 0) {
@@ -101,9 +108,7 @@ static void shell_execute(void) {
         filename[i] = '\0';
         if (args[i] == ' ') {
             char *text = args + i + 1;
-            
             aetherfs_create_file(filename);
-
             if (aetherfs_write_file(filename, text, strlen(text)) == 0) {
                 kprint("Data written to ");
                 kprint(filename);
