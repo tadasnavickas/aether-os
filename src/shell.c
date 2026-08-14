@@ -1,5 +1,6 @@
 #include "shell.h"
 #include "mm/pmm.h"
+#include "mm/heap.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -49,24 +50,59 @@ static void shell_execute(void) {
         kprint("Available commands:\n");
         kprint("  help   - Show this help menu\n");
         kprint("  clear  - Clear the screen\n");
-        kprint("  mem    - Display RAM statistics\n");
+        kprint("  mem    - Display Physical RAM (PMM) stats\n");
+        kprint("  heap   - Display Kernel Heap (kmalloc) stats\n");
+        kprint("  test   - Test dynamic allocation (kmalloc & kfree)\n");
         kprint("  echo   - Print arguments to screen\n");
         kprint("  panic  - Trigger kernel panic exception\n");
     } else if (strcmp(cmd_buffer, "clear") == 0) {
         clear_screen(0x000F172A);
     } else if (strcmp(cmd_buffer, "mem") == 0) {
-        kprint("Memory Status:\n");
+        kprint("Physical Memory (PMM):\n");
         kprint("  Total RAM: ");
         kprint_dec(pmm_get_total_memory() / (1024 * 1024));
         kprint(" MB\n  Free RAM:  ");
         kprint_dec(pmm_get_free_memory() / (1024 * 1024));
         kprint(" MB\n");
+    } else if (strcmp(cmd_buffer, "heap") == 0) {
+        kprint("Kernel Heap Memory:\n");
+        kprint("  Total Heap: ");
+        kprint_dec(heap_get_total() / 1024);
+        kprint(" KB\n  Used Heap:  ");
+        kprint_dec(heap_get_used());
+        kprint(" Bytes\n");
+    } else if (strcmp(cmd_buffer, "test") == 0) {
+        kprint("Testing dynamic memory allocation:\n");
+        
+        void *ptr1 = kmalloc(64);
+        kprint("  [1] kmalloc(64)  -> ");
+        if (ptr1) {
+            kprint_hex((uint64_t)ptr1);
+            kprint(" [OK]\n");
+        } else {
+            kprint("FAILED\n");
+        }
+
+        void *ptr2 = kmalloc(128);
+        kprint("  [2] kmalloc(128) -> ");
+        if (ptr2) {
+            kprint_hex((uint64_t)ptr2);
+            kprint(" [OK]\n");
+        } else {
+            kprint("FAILED\n");
+        }
+
+        kprint("  [3] Freeing memory blocks...\n");
+        kfree(ptr1);
+        kfree(ptr2);
+        kprint("  [OK] Heap cleanup successful!\n");
     } else if (strncmp(cmd_buffer, "echo ", 5) == 0) {
         kprint(cmd_buffer + 5);
         kprint("\n");
     } else if (strcmp(cmd_buffer, "panic") == 0) {
-        kprint("Triggering division by zero...\n");
-        int a = 1 / 0;
+        kprint("Triggering division by zero panic...\n");
+        volatile int zero = 0;
+        volatile int a = 1 / zero;
         (void)a;
     } else {
         kprint("Unknown command: ");

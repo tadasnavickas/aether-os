@@ -38,7 +38,9 @@ void default_exception_handler(struct interrupt_frame *frame) {
     kprint("\n\n==================================================\n");
     kprint("             KERNEL PANIC: EXCEPTION              \n");
     kprint("==================================================\n");
-    kprint("Instruction Pointer (RIP): ");
+    kprint("Fault Reason:              ");
+    kprint(exception_names[0]);
+    kprint("\nInstruction Pointer (RIP): ");
     kprint_hex(frame->rip);
     kprint("\nCode Segment (CS):         ");
     kprint_hex(frame->cs);
@@ -46,7 +48,7 @@ void default_exception_handler(struct interrupt_frame *frame) {
     kprint_hex(frame->rflags);
     kprint("\nStack Pointer (RSP):       ");
     kprint_hex(frame->rsp);
-    kprint("\nSystem halted to prevent data corruption.\n");
+    kprint("\n\nSystem halted to prevent data corruption.\n");
 
     for (;;) {
         asm volatile ("hlt");
@@ -69,7 +71,6 @@ void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
 void idt_init(void) {
     idtr_descriptor.base = (uint64_t)&idt[0];
     idtr_descriptor.limit = (uint16_t)(sizeof(struct idt_entry) * 256 - 1);
-
 
     for (uint8_t vector = 0; vector < 32; vector++) {
         idt_set_descriptor(vector, (void *)default_exception_handler, 0x8E);

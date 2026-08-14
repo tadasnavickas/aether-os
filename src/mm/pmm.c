@@ -19,6 +19,14 @@ static uint64_t total_pages = 0;
 static uint64_t free_pages = 0;
 static uint64_t hhdm_offset = 0;
 
+void *phys_to_virt(void *phys_addr) {
+    return (void *)((uint64_t)phys_addr + hhdm_offset);
+}
+
+void *virt_to_phys(void *virt_addr) {
+    return (void *)((uint64_t)virt_addr - hhdm_offset);
+}
+
 static inline void bitmap_set(uint64_t page) {
     bitmap[page / 8] |= (1 << (page % 8));
 }
@@ -57,7 +65,7 @@ void pmm_init(void) {
     for (size_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
         if (entry->type == LIMINE_MEMMAP_USABLE && entry->length >= bitmap_size) {
-            bitmap = (uint8_t *)(entry->base + hhdm_offset);
+            bitmap = (uint8_t *)phys_to_virt((void *)entry->base);
             break;
         }
     }
@@ -76,7 +84,7 @@ void pmm_init(void) {
         }
     }
 
-    uint64_t bitmap_phys_addr = (uint64_t)bitmap - hhdm_offset;
+    uint64_t bitmap_phys_addr = (uint64_t)virt_to_phys(bitmap);
     for (uint64_t addr = bitmap_phys_addr; addr < bitmap_phys_addr + bitmap_size; addr += PAGE_SIZE) {
         bitmap_set(addr / PAGE_SIZE);
         if (free_pages > 0) free_pages--;

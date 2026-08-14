@@ -7,6 +7,7 @@
 #include "arch/pic.h"
 #include "drivers/keyboard.h"
 #include "mm/pmm.h"
+#include "mm/heap.h"
 #include "shell.h"
 
 __attribute__((used, section(".requests")))
@@ -148,9 +149,7 @@ void kmain(void) {
     serial_init();
 
     if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) {
-        for (;;) {
-            __asm__ volatile ("hlt");
-        }
+        for (;;) __asm__ volatile ("hlt");
     }
 
     fb = framebuffer_request.response->framebuffers[0];
@@ -190,6 +189,10 @@ void kmain(void) {
     kprint(" MB | Free RAM: ");
     kprint_dec(pmm_get_free_memory() / (1024 * 1024));
     kprint(" MB\n");
+
+    heap_init();
+    fg_color = 0x0034D399;
+    kprint("[OK] Heap Allocator: Active (kmalloc/kfree ready)\n");
 
     pic_remap();
     keyboard_init();
