@@ -1,6 +1,7 @@
 #include "shell.h"
 #include "mm/pmm.h"
 #include "mm/heap.h"
+#include "drivers/timer.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -48,15 +49,27 @@ static void shell_execute(void) {
 
     if (strcmp(cmd_buffer, "help") == 0) {
         kprint("Available commands:\n");
-        kprint("  help   - Show this help menu\n");
-        kprint("  clear  - Clear the screen\n");
-        kprint("  mem    - Display Physical RAM (PMM) stats\n");
-        kprint("  heap   - Display Kernel Heap (kmalloc) stats\n");
-        kprint("  test   - Test dynamic allocation (kmalloc & kfree)\n");
-        kprint("  echo   - Print arguments to screen\n");
-        kprint("  panic  - Trigger kernel panic exception\n");
+        kprint("  help    - Show this help menu\n");
+        kprint("  clear   - Clear the screen\n");
+        kprint("  uptime  - Show system uptime\n");
+        kprint("  sleep   - Test timer delay (sleep 2000 ms)\n");
+        kprint("  mem     - Display Physical RAM stats\n");
+        kprint("  heap    - Display Kernel Heap stats\n");
+        kprint("  test    - Test dynamic allocation (kmalloc & kfree)\n");
+        kprint("  echo    - Print arguments to screen\n");
+        kprint("  panic   - Trigger kernel panic exception\n");
     } else if (strcmp(cmd_buffer, "clear") == 0) {
         clear_screen(0x000F172A);
+    } else if (strcmp(cmd_buffer, "uptime") == 0) {
+        kprint("System Uptime: ");
+        kprint_dec(timer_get_uptime_seconds());
+        kprint(" s (");
+        kprint_dec(timer_get_ticks());
+        kprint(" ticks)\n");
+    } else if (strcmp(cmd_buffer, "sleep") == 0) {
+        kprint("Sleeping for 2000 ms (2 seconds)...\n");
+        sleep_ms(2000);
+        kprint("Awake! System timer is working smoothly.\n");
     } else if (strcmp(cmd_buffer, "mem") == 0) {
         kprint("Physical Memory (PMM):\n");
         kprint("  Total RAM: ");

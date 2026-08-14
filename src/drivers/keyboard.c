@@ -23,14 +23,15 @@ void keyboard_interrupt_handler(struct interrupt_frame *frame) {
     (void)frame;
     uint8_t scancode = inb(0x60);
 
+    pic_send_eoi(1);
+
     if (!(scancode & 0x80)) {
         char c = kbd_us[scancode];
         if (c != 0) {
+            __asm__ volatile ("sti");
             shell_handle_key(c);
         }
     }
-
-    pic_send_eoi(1);
 }
 
 void keyboard_init(void) {

@@ -1,10 +1,12 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+
 #include "limine.h"
 #include "font/font.h"
 #include "arch/idt.h"
 #include "arch/pic.h"
+#include "drivers/timer.h"
 #include "drivers/keyboard.h"
 #include "mm/pmm.h"
 #include "mm/heap.h"
@@ -20,7 +22,7 @@ static struct limine_framebuffer *fb = NULL;
 static size_t cursor_x = 0;
 static size_t cursor_y = 0;
 static uint32_t fg_color = 0xFFFFFFFF;
-static uint32_t bg_color = 0x000F172A;
+static uint32_t bg_color = 0x000F172A; // Темно-синий фон
 
 static inline void outb(uint16_t port, uint8_t val) {
     __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
@@ -42,15 +44,20 @@ static void serial_init(void) {
     outb(0x3F8 + 4, 0x0B);
 }
 
-static void serial_putchar(char c) {
-    while ((inb(0x3F8 + 5) & 0x20) == 0);
+static inline int serial_is_transmit_empty(void) {
+    return inb(0x3F8 + 5) & 0x20;
+}
+
+static void serial_putc(char c) {
+    while (serial_is_transmit_empty() == 0);
     outb(0x3F8, c);
 }
 
-void put_pixel(size_t x, size_t y, uint32_t color) {
-    if (!fb || x >= fb->width || y >= fb->height) return;
-    volatile uint32_t *pixel_addr = (volatile uint32_t *)((uint8_t *)fb->address + (y * fb->pitch) + (x * (fb->bpp / 8)));
-    *pixel_addr = color;
+static inline void put_pixel(size_t x, size_t y, uint32_t color) {
+    if (fb && x < fb->width && y < fb->height) {
+        volatile uint32_t *dest = (volatile uint32_t *)((uint8_t *)fb->address + y * fb->pitch + x * 4);
+        *dest = color;
+    }
 }
 
 void clear_screen(uint32_t color) {
@@ -65,7 +72,7 @@ void clear_screen(uint32_t color) {
     cursor_y = 0;
 }
 
-void draw_char(char c, size_t x, size_t y, uint32_t fg, uint32_t bg) {
+static void draw_char(char c, size_t x, size_t y, uint32_t fg, uint32_t bg) {
     if ((unsigned char)c >= 128) return;
     const uint8_t *glyph = font8x16[(unsigned char)c];
 
@@ -82,8 +89,8 @@ void draw_char(char c, size_t x, size_t y, uint32_t fg, uint32_t bg) {
 }
 
 void kputchar(char c) {
-    if (c == '\n') serial_putchar('\r');
-    serial_putchar(c);
+    if (c == '\n') serial_putc('\r');
+    serial_putc(c);
 
     if (c == '\n') {
         cursor_x = 0;
@@ -120,14 +127,14 @@ void kprint(const char *str) {
 
 void kprint_hex(uint64_t val) {
     kprint("0x");
-    char buf[17];
-    char hex_digits[] = "0123456789ABCDEF";
-    for (int i = 15; i >= 0; i--) {
-        buf[i] = hex_digits[val & 0xF];
-        val >>= 4;
+    for (int i = 60; i >= 0; i -= 4) {
+        uint8_t nibble = (val >> i) & 0xF;
+        if (nibble < 10) {
+            kputchar('0' + nibble);
+        } else {
+            kputchar('A' + (nibble - 10));
+        }
     }
-    buf[16] = '\0';
-    kprint(buf);
 }
 
 void kprint_dec(uint64_t val) {
@@ -135,14 +142,15 @@ void kprint_dec(uint64_t val) {
         kputchar('0');
         return;
     }
-    char buf[21];
-    int i = 19;
-    buf[20] = '\0';
-    while (val > 0 && i >= 0) {
-        buf[i--] = '0' + (val % 10);
+    char buf[32];
+    int i = 0;
+    while (val > 0) {
+        buf[i++] = (val % 10) + '0';
         val /= 10;
     }
-    kprint(&buf[i + 1]);
+    while (--i >= 0) {
+        kputchar(buf[i]);
+    }
 }
 
 void kmain(void) {
@@ -195,11 +203,12 @@ void kmain(void) {
     kprint("[OK] Heap Allocator: Active (kmalloc/kfree ready)\n");
 
     pic_remap();
+    timer_init(1000);
     keyboard_init();
     __asm__ volatile ("sti");
 
     fg_color = 0x00F472B6;
-    kprint("[OK] PIC & PS/2 Keyboard Driver: Ready\n");
+    kprint("[OK] PIC, PIT Timer (1000Hz) & PS/2 Keyboard: Ready\n");
 
     fg_color = 0xFFFFFFFF;
     shell_init();
