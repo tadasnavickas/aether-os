@@ -5,8 +5,9 @@
 #include "font/font.h"
 #include "arch/idt.h"
 #include "arch/pic.h"
-#include "mm/pmm.h"
 #include "drivers/keyboard.h"
+#include "mm/pmm.h"
+#include "shell.h"
 
 __attribute__((used, section(".requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
@@ -40,51 +41,40 @@ static void serial_init(void) {
     outb(0x3F8 + 4, 0x0B);
 }
 
-static int is_transmit_empty(void) {
-    return inb(0x3F8 + 5) & 0x20;
-}
-
 static void serial_putchar(char c) {
-    while (is_transmit_empty() == 0);
+    while ((inb(0x3F8 + 5) & 0x20) == 0);
     outb(0x3F8, c);
 }
 
-static void serial_print(const char *str) {
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\n') serial_putchar('\r');
-        serial_putchar(str[i]);
-    }
-}
-
-static void putpixel(size_t x, size_t y, uint32_t color) {
+void put_pixel(size_t x, size_t y, uint32_t color) {
     if (!fb || x >= fb->width || y >= fb->height) return;
-    volatile uint32_t *pixel_addr = (volatile uint32_t *)((uint8_t *)fb->address + y * fb->pitch + x * 4);
+    volatile uint32_t *pixel_addr = (volatile uint32_t *)((uint8_t *)fb->address + (y * fb->pitch) + (x * (fb->bpp / 8)));
     *pixel_addr = color;
 }
 
-static void clear_screen(uint32_t color) {
-    if (!fb) return;
+void clear_screen(uint32_t color) {
     bg_color = color;
+    if (!fb) return;
     for (size_t y = 0; y < fb->height; y++) {
         for (size_t x = 0; x < fb->width; x++) {
-            putpixel(x, y, color);
+            put_pixel(x, y, color);
         }
     }
     cursor_x = 0;
     cursor_y = 0;
 }
 
-static void draw_char(char c, size_t x, size_t y, uint32_t fg, uint32_t bg) {
-    uint8_t uc = (uint8_t)c;
-    if (uc > 127) uc = '?';
+void draw_char(char c, size_t x, size_t y, uint32_t fg, uint32_t bg) {
+    if ((unsigned char)c >= 128) return;
+    const uint8_t *glyph = font8x16[(unsigned char)c];
 
     for (int cy = 0; cy < 16; cy++) {
-        uint8_t row = font8x16[uc][cy];
+        uint8_t row = glyph[cy];
         for (int cx = 0; cx < 8; cx++) {
             if ((row >> (7 - cx)) & 1) {
-                putpixel(x + cx, y + cy, fg);
+                put_pixel(x + cx, y + cy, fg);
             } else {
-                putpixel(x + cx, y + cy, bg);
+                put_pixel(x + cx, y + cy, bg);
             }
         }
     }
@@ -97,6 +87,14 @@ void kputchar(char c) {
     if (c == '\n') {
         cursor_x = 0;
         cursor_y += 16;
+        return;
+    }
+
+    if (c == '\b') {
+        if (cursor_x >= 8) {
+            cursor_x -= 8;
+            draw_char(' ', cursor_x, cursor_y, fg_color, bg_color);
+        }
         return;
     }
 
@@ -114,21 +112,21 @@ void kputchar(char c) {
 }
 
 void kprint(const char *str) {
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        kputchar(str[i]);
+    while (*str) {
+        kputchar(*str++);
     }
 }
 
 void kprint_hex(uint64_t val) {
     kprint("0x");
-    for (int i = 60; i >= 0; i -= 4) {
-        uint8_t nibble = (val >> i) & 0xF;
-        if (nibble < 10) {
-            kputchar('0' + nibble);
-        } else {
-            kputchar('A' + (nibble - 10));
-        }
+    char buf[17];
+    char hex_digits[] = "0123456789ABCDEF";
+    for (int i = 15; i >= 0; i--) {
+        buf[i] = hex_digits[val & 0xF];
+        val >>= 4;
     }
+    buf[16] = '\0';
+    kprint(buf);
 }
 
 void kprint_dec(uint64_t val) {
@@ -136,24 +134,23 @@ void kprint_dec(uint64_t val) {
         kputchar('0');
         return;
     }
-    char buf[32];
-    int i = 0;
-    while (val > 0) {
-        buf[i++] = '0' + (val % 10);
+    char buf[21];
+    int i = 19;
+    buf[20] = '\0';
+    while (val > 0 && i >= 0) {
+        buf[i--] = '0' + (val % 10);
         val /= 10;
     }
-    while (--i >= 0) {
-        kputchar(buf[i]);
-    }
+    kprint(&buf[i + 1]);
 }
 
 void kmain(void) {
     serial_init();
-    serial_print("\n[AetherOS] Serial COM1 Initialized\n");
 
     if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) {
-        serial_print("[ERROR] Framebuffer not found!\n");
-        for (;;) __asm__ volatile ("hlt");
+        for (;;) {
+            __asm__ volatile ("hlt");
+        }
     }
 
     fb = framebuffer_request.response->framebuffers[0];
@@ -194,23 +191,15 @@ void kmain(void) {
     kprint_dec(pmm_get_free_memory() / (1024 * 1024));
     kprint(" MB\n");
 
-    void *test_page1 = pmm_alloc_page();
-    void *test_page2 = pmm_alloc_page();
-    kprint("     Allocated Page 1: ");
-    kprint_hex((uint64_t)test_page1);
-    kprint(" | Page 2: ");
-    kprint_hex((uint64_t)test_page2);
-    kprint("\n\n");
-
     pic_remap();
     keyboard_init();
     __asm__ volatile ("sti");
 
     fg_color = 0x00F472B6;
-    kprint("[OK] PIC & PS/2 Keyboard Driver: Ready\n\n");
+    kprint("[OK] PIC & PS/2 Keyboard Driver: Ready\n");
 
     fg_color = 0xFFFFFFFF;
-    kprint("AetherOS Shell (type anything): \n> ");
+    shell_init();
 
     for (;;) {
         __asm__ volatile ("hlt");

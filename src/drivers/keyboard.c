@@ -1,9 +1,8 @@
 #include "keyboard.h"
 #include "../arch/pic.h"
 #include "../arch/idt.h"
+#include "../shell.h"
 #include <stdint.h>
-
-void kputchar(char c);
 
 static inline uint8_t inb(uint16_t port) {
     uint8_t ret;
@@ -27,7 +26,7 @@ void keyboard_interrupt_handler(struct interrupt_frame *frame) {
     if (!(scancode & 0x80)) {
         char c = kbd_us[scancode];
         if (c != 0) {
-            kputchar(c);
+            shell_handle_key(c);
         }
     }
 
