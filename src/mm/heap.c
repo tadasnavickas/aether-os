@@ -1,7 +1,7 @@
 #include "heap.h"
 #include "pmm.h"
 
-#define HEAP_INITIAL_PAGES 64
+#define HEAP_INITIAL_PAGES 1024
 
 struct heap_block {
     size_t size;

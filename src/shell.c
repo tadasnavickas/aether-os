@@ -4,6 +4,7 @@
 #include "drivers/timer.h"
 #include "drivers/rtc.h"
 #include "fs/vfs.h"
+#include "fs/aetherfs.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -40,10 +41,16 @@ static int strncmp(const char *a, const char *b, size_t n) {
     return 0;
 }
 
+static size_t strlen(const char *s) {
+    size_t len = 0;
+    while (s[len]) len++;
+    return len;
+}
+
 void shell_init(void) {
     cmd_len = 0;
     cmd_buffer[0] = '\0';
-    kprint("\nAetherOS Shell v0.1\nType 'help' for a list of commands.\n> ");
+    kprint("\nAetherOS Shell v0.2 (Native AetherFS ready)\nType 'help' for commands.\n> ");
 }
 
 static void shell_execute(void) {
@@ -55,23 +62,84 @@ static void shell_execute(void) {
     kprint("\n");
 
     if (strcmp(cmd_buffer, "help") == 0) {
-        kprint("Available commands:\n");
-        kprint("  help        - Show this help menu\n");
-        kprint("  clear       - Clear the screen\n");
-        kprint("  ls          - List files on Ramdisk\n");
-        kprint("  cat <file>  - Display contents of a file\n");
-        kprint("  date        - Show RTC date and time (UTC)\n");
-        kprint("  uptime      - Show system uptime\n");
-        kprint("  sleep       - Test timer delay (sleep 2000 ms)\n");
-        kprint("  mem         - Display Physical RAM stats\n");
-        kprint("  heap        - Display Kernel Heap stats\n");
-        kprint("  test        - Test dynamic allocation (kmalloc/kfree)\n");
-        kprint("  echo <text> - Print arguments to screen\n");
-        kprint("  panic       - Trigger kernel panic exception\n");
+        kprint("Commands:\n");
+        kprint("  dir          - List files on AetherFS disk\n");
+        kprint("  touch <file> - Create an empty file\n");
+        kprint("  write <f> <t>- Write/Overwrite text into file\n");
+        kprint("  type <file>  - Read file contents\n");
+        kprint("  rm <file>    - Delete file from AetherFS\n");
+        kprint("  format       - Reformat AetherFS disk\n");
+        kprint("  ls           - List files on TarFS (initrd)\n");
+        kprint("  cat <file>   - Read file from TarFS\n");
+        kprint("  date         - Show RTC date/time\n");
+        kprint("  uptime       - Show system uptime\n");
+        kprint("  sleep        - Sleep 2 seconds\n");
+        kprint("  mem / heap   - Memory status\n");
+        kprint("  clear        - Clear screen\n");
     } else if (strcmp(cmd_buffer, "clear") == 0) {
         clear_screen(0x000F172A);
+    } else if (strcmp(cmd_buffer, "dir") == 0) {
+        kprint("AetherFS Native Drive Files:\n");
+        aetherfs_list();
+    } else if (strncmp(cmd_buffer, "touch ", 6) == 0) {
+        char *name = cmd_buffer + 6;
+        if (aetherfs_create_file(name) == 0) {
+            kprint("File created: ");
+            kprint(name);
+            kprint("\n");
+        } else {
+            kprint("Error creating file!\n");
+        }
+    } else if (strncmp(cmd_buffer, "write ", 6) == 0) {
+        char *args = cmd_buffer + 6;
+        char filename[32] = {0};
+        int i = 0;
+        while (args[i] && args[i] != ' ' && i < 31) {
+            filename[i] = args[i];
+            i++;
+        }
+        filename[i] = '\0';
+        if (args[i] == ' ') {
+            char *text = args + i + 1;
+            
+            aetherfs_create_file(filename);
+
+            if (aetherfs_write_file(filename, text, strlen(text)) == 0) {
+                kprint("Data written to ");
+                kprint(filename);
+                kprint("\n");
+            } else {
+                kprint("Error writing to file!\n");
+            }
+        } else {
+            kprint("Usage: write <filename> <text>\n");
+        }
+    } else if (strncmp(cmd_buffer, "type ", 5) == 0) {
+        char *name = cmd_buffer + 5;
+        char buf[512];
+        if (aetherfs_read_file(name, buf, sizeof(buf)) == 0) {
+            kprint(buf);
+            kprint("\n");
+        } else {
+            kprint("File not found on AetherFS: ");
+            kprint(name);
+            kprint("\n");
+        }
+    } else if (strncmp(cmd_buffer, "rm ", 3) == 0) {
+        char *name = cmd_buffer + 3;
+        if (aetherfs_delete_file(name) == 0) {
+            kprint("File deleted: ");
+            kprint(name);
+            kprint("\n");
+        } else {
+            kprint("File not found: ");
+            kprint(name);
+            kprint("\n");
+        }
+    } else if (strcmp(cmd_buffer, "format") == 0) {
+        aetherfs_format();
     } else if (strcmp(cmd_buffer, "ls") == 0) {
-        kprint("Files on Ramdisk:\n");
+        kprint("TarFS (Read-only Ramdisk):\n");
         vfs_list_files();
     } else if (strncmp(cmd_buffer, "cat ", 4) == 0) {
         char *filename = cmd_buffer + 4;
@@ -80,7 +148,7 @@ static void shell_execute(void) {
             kprint(file_content);
             kprint("\n");
         } else {
-            kprint("File not found: ");
+            kprint("File not found on TarFS: ");
             kprint(filename);
             kprint("\n");
         }
@@ -103,59 +171,19 @@ static void shell_execute(void) {
     } else if (strcmp(cmd_buffer, "uptime") == 0) {
         kprint("System Uptime: ");
         kprint_dec(timer_get_uptime_seconds());
-        kprint(" s (");
-        kprint_dec(timer_get_ticks());
-        kprint(" ticks)\n");
+        kprint(" s\n");
     } else if (strcmp(cmd_buffer, "sleep") == 0) {
-        kprint("Sleeping for 2000 ms (2 seconds)...\n");
+        kprint("Sleeping for 2000 ms...\n");
         sleep_ms(2000);
-        kprint("Awake! System timer is working smoothly.\n");
+        kprint("Awake!\n");
     } else if (strcmp(cmd_buffer, "mem") == 0) {
-        kprint("Physical Memory (PMM):\n");
-        kprint("  Total RAM: ");
-        kprint_dec(pmm_get_total_memory() / (1024 * 1024));
-        kprint(" MB\n  Free RAM:  ");
+        kprint("Physical RAM: ");
         kprint_dec(pmm_get_free_memory() / (1024 * 1024));
-        kprint(" MB\n");
+        kprint(" MB free\n");
     } else if (strcmp(cmd_buffer, "heap") == 0) {
-        kprint("Kernel Heap Memory:\n");
-        kprint("  Total Heap: ");
-        kprint_dec(heap_get_total() / 1024);
-        kprint(" KB\n  Used Heap:  ");
+        kprint("Kernel Heap: ");
         kprint_dec(heap_get_used());
-        kprint(" Bytes\n");
-    } else if (strcmp(cmd_buffer, "test") == 0) {
-        kprint("Testing dynamic memory allocation:\n");
-        void *ptr1 = kmalloc(64);
-        kprint("  [1] kmalloc(64)  -> ");
-        if (ptr1) {
-            kprint_hex((uint64_t)ptr1);
-            kprint(" [OK]\n");
-        } else {
-            kprint("FAILED\n");
-        }
-
-        void *ptr2 = kmalloc(128);
-        kprint("  [2] kmalloc(128) -> ");
-        if (ptr2) {
-            kprint_hex((uint64_t)ptr2);
-            kprint(" [OK]\n");
-        } else {
-            kprint("FAILED\n");
-        }
-
-        kprint("  [3] Freeing memory blocks...\n");
-        kfree(ptr1);
-        kfree(ptr2);
-        kprint("  [OK] Heap cleanup successful!\n");
-    } else if (strncmp(cmd_buffer, "echo ", 5) == 0) {
-        kprint(cmd_buffer + 5);
-        kprint("\n");
-    } else if (strcmp(cmd_buffer, "panic") == 0) {
-        kprint("Triggering division by zero panic...\n");
-        volatile int zero = 0;
-        volatile int a = 1 / zero;
-        (void)a;
+        kprint(" Bytes used\n");
     } else {
         kprint("Unknown command: ");
         kprint(cmd_buffer);

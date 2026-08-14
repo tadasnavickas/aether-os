@@ -13,6 +13,7 @@
 #include "mm/heap.h"
 #include "fs/vfs.h"
 #include "shell.h"
+#include "fs/aetherfs.h"
 
 __attribute__((used, section(".requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
@@ -212,6 +213,9 @@ void kmain(void) {
 
     // VFS / Ramdisk
     vfs_init();
+    aetherfs_init();
+    fg_color = 0x00F43F5E;
+    kprint("[OK] AetherFS (native read/write Inode FS): Active\n");
     fg_color = 0x0038BDF8;
     kprint("[OK] Virtual File System (TarFS / Initrd): Mounted\n");
 
