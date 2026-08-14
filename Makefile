@@ -15,7 +15,7 @@ kernel.elf: $(OBJS)
 
 aetheros.iso: kernel.elf limine.cfg
 	mkdir -p iso_root
-	cp kernel.elf limine.cfg limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/
+	cp kernel.elf initrd.tar limine.cfg limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/
 	xorriso -as mkisofs -b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table --efi-boot limine-uefi-cd.bin -efi-boot-part --efi-boot-image --protective-msdos-label iso_root -o aetheros.iso
 	./limine/limine bios-install aetheros.iso
 	rm -rf iso_root

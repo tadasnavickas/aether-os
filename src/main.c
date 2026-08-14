@@ -8,8 +8,10 @@
 #include "arch/pic.h"
 #include "drivers/timer.h"
 #include "drivers/keyboard.h"
+#include "drivers/rtc.h"
 #include "mm/pmm.h"
 #include "mm/heap.h"
+#include "fs/vfs.h"
 #include "shell.h"
 
 __attribute__((used, section(".requests")))
@@ -22,7 +24,7 @@ static struct limine_framebuffer *fb = NULL;
 static size_t cursor_x = 0;
 static size_t cursor_y = 0;
 static uint32_t fg_color = 0xFFFFFFFF;
-static uint32_t bg_color = 0x000F172A; // Темно-синий фон
+static uint32_t bg_color = 0x000F172A;
 
 static inline void outb(uint16_t port, uint8_t val) {
     __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
@@ -145,7 +147,7 @@ void kprint_dec(uint64_t val) {
     char buf[32];
     int i = 0;
     while (val > 0) {
-        buf[i++] = (val % 10) + '0';
+        buf[i++] = '0' + (val % 10);
         val /= 10;
     }
     while (--i >= 0) {
@@ -163,11 +165,13 @@ void kmain(void) {
     fb = framebuffer_request.response->framebuffers[0];
     clear_screen(0x000F172A);
 
+    // Title
     fg_color = 0x0038BDF8;
     kprint("==================================================\n");
     kprint("           AetherOS Kernel x86_64 v0.1            \n");
     kprint("==================================================\n\n");
 
+    // Video
     fg_color = 0x004ADE80;
     kprint("[OK] Resolution: ");
     kprint_dec(fb->width);
@@ -181,14 +185,17 @@ void kmain(void) {
     kprint_hex((uint64_t)fb->address);
     kprint("\n");
 
+    // COM1
     fg_color = 0x00FACC15;
     kprint("[OK] Serial UART COM1: Active (38400 baud)\n");
     kprint("[OK] Console Font Engine: 8x16 Bitmap Loaded\n");
 
+    // IDT
     idt_init();
     fg_color = 0x0038BDF8;
     kprint("[OK] IDT (Interrupt Descriptor Table): Loaded (256 vectors)\n");
 
+    // PMM
     pmm_init();
     fg_color = 0x00A78BFA;
     kprint("[OK] PMM (Physical Memory Manager): Active (Bitmap Allocator)\n");
@@ -198,10 +205,17 @@ void kmain(void) {
     kprint_dec(pmm_get_free_memory() / (1024 * 1024));
     kprint(" MB\n");
 
+    // Heap
     heap_init();
     fg_color = 0x0034D399;
     kprint("[OK] Heap Allocator: Active (kmalloc/kfree ready)\n");
 
+    // VFS / Ramdisk
+    vfs_init();
+    fg_color = 0x0038BDF8;
+    kprint("[OK] Virtual File System (TarFS / Initrd): Mounted\n");
+
+    // PIC, Timer, Keyboard
     pic_remap();
     timer_init(1000);
     keyboard_init();
@@ -210,6 +224,7 @@ void kmain(void) {
     fg_color = 0x00F472B6;
     kprint("[OK] PIC, PIT Timer (1000Hz) & PS/2 Keyboard: Ready\n");
 
+    // Shell
     fg_color = 0xFFFFFFFF;
     shell_init();
 

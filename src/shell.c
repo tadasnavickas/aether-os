@@ -3,6 +3,7 @@
 #include "mm/heap.h"
 #include "drivers/timer.h"
 #include "drivers/rtc.h"
+#include "fs/vfs.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -55,18 +56,34 @@ static void shell_execute(void) {
 
     if (strcmp(cmd_buffer, "help") == 0) {
         kprint("Available commands:\n");
-        kprint("  help    - Show this help menu\n");
-        kprint("  clear   - Clear the screen\n");
-        kprint("  date    - Show current RTC date and time (UTC)\n");
-        kprint("  uptime  - Show system uptime\n");
-        kprint("  sleep   - Test timer delay (sleep 2000 ms)\n");
-        kprint("  mem     - Display Physical RAM stats\n");
-        kprint("  heap    - Display Kernel Heap stats\n");
-        kprint("  test    - Test dynamic allocation (kmalloc & kfree)\n");
-        kprint("  echo    - Print arguments to screen\n");
-        kprint("  panic   - Trigger kernel panic exception\n");
+        kprint("  help        - Show this help menu\n");
+        kprint("  clear       - Clear the screen\n");
+        kprint("  ls          - List files on Ramdisk\n");
+        kprint("  cat <file>  - Display contents of a file\n");
+        kprint("  date        - Show RTC date and time (UTC)\n");
+        kprint("  uptime      - Show system uptime\n");
+        kprint("  sleep       - Test timer delay (sleep 2000 ms)\n");
+        kprint("  mem         - Display Physical RAM stats\n");
+        kprint("  heap        - Display Kernel Heap stats\n");
+        kprint("  test        - Test dynamic allocation (kmalloc/kfree)\n");
+        kprint("  echo <text> - Print arguments to screen\n");
+        kprint("  panic       - Trigger kernel panic exception\n");
     } else if (strcmp(cmd_buffer, "clear") == 0) {
         clear_screen(0x000F172A);
+    } else if (strcmp(cmd_buffer, "ls") == 0) {
+        kprint("Files on Ramdisk:\n");
+        vfs_list_files();
+    } else if (strncmp(cmd_buffer, "cat ", 4) == 0) {
+        char *filename = cmd_buffer + 4;
+        char file_content[512];
+        if (vfs_read_file(filename, file_content, sizeof(file_content)) == 0) {
+            kprint(file_content);
+            kprint("\n");
+        } else {
+            kprint("File not found: ");
+            kprint(filename);
+            kprint("\n");
+        }
     } else if (strcmp(cmd_buffer, "date") == 0) {
         struct rtc_time t;
         rtc_get_time(&t);
