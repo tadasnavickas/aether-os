@@ -2,6 +2,7 @@
 #include "mm/pmm.h"
 #include "mm/heap.h"
 #include "drivers/timer.h"
+#include "drivers/rtc.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -15,6 +16,11 @@ void kputchar(char c);
 void kprint_dec(uint64_t val);
 void kprint_hex(uint64_t val);
 void clear_screen(uint32_t color);
+
+static void print_2digits(uint8_t val) {
+    if (val < 10) kputchar('0');
+    kprint_dec(val);
+}
 
 static int strcmp(const char *a, const char *b) {
     while (*a && (*a == *b)) {
@@ -51,6 +57,7 @@ static void shell_execute(void) {
         kprint("Available commands:\n");
         kprint("  help    - Show this help menu\n");
         kprint("  clear   - Clear the screen\n");
+        kprint("  date    - Show current RTC date and time (UTC)\n");
         kprint("  uptime  - Show system uptime\n");
         kprint("  sleep   - Test timer delay (sleep 2000 ms)\n");
         kprint("  mem     - Display Physical RAM stats\n");
@@ -60,6 +67,22 @@ static void shell_execute(void) {
         kprint("  panic   - Trigger kernel panic exception\n");
     } else if (strcmp(cmd_buffer, "clear") == 0) {
         clear_screen(0x000F172A);
+    } else if (strcmp(cmd_buffer, "date") == 0) {
+        struct rtc_time t;
+        rtc_get_time(&t);
+        kprint("RTC Time (UTC): ");
+        kprint_dec(t.year);
+        kputchar('-');
+        print_2digits(t.month);
+        kputchar('-');
+        print_2digits(t.day);
+        kprint(" ");
+        print_2digits(t.hour);
+        kputchar(':');
+        print_2digits(t.minute);
+        kputchar(':');
+        print_2digits(t.second);
+        kprint("\n");
     } else if (strcmp(cmd_buffer, "uptime") == 0) {
         kprint("System Uptime: ");
         kprint_dec(timer_get_uptime_seconds());
@@ -86,7 +109,6 @@ static void shell_execute(void) {
         kprint(" Bytes\n");
     } else if (strcmp(cmd_buffer, "test") == 0) {
         kprint("Testing dynamic memory allocation:\n");
-        
         void *ptr1 = kmalloc(64);
         kprint("  [1] kmalloc(64)  -> ");
         if (ptr1) {
